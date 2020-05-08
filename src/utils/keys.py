@@ -8,3 +8,4 @@ VALID_SUBSETS = (ALL, MIN, MAJ)
 # string identifiers for the datasets
 GERMAN = "german"
 ADULT = "adult"
+COMPAS = "compas"

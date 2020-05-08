@@ -18,6 +18,13 @@ python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --majority_attribute_label White \
     --minority_attribute_label Black \
     --batch_size 512
+
+python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset compas \
+    --niters 1 \
+    --sensitive_attribute race \
+    --majority_attribute_label Caucasian \
+    --minority_attribute_label African-American \
+    --batch_size 128
 """
 
 import os
@@ -34,6 +41,8 @@ from src.data.german import GERMAN_COLUMNS, CATEGORICAL_COLUMNS_TRAIN_GERMAN, \
     NUMERIC_COLUMNS_TRAIN_GERMAN, add_sex_category
 from src.data.adult import ADULT_COLUMNS, CATEGORICAL_COLUMNS_TRAIN_ADULT, \
     NUMERIC_COLUMNS_TRAIN_ADULT
+from src.data.compas import COMPAS_COLUMNS, CATEGORICAL_COLUMNS_TRAIN_COMPAS, \
+    NUMERIC_COLUMNS_TRAIN_COMPAS
 from src.utils import keys
 from src.utils.keys import ALL, MIN, MAJ, VALID_SUBSETS
 
@@ -50,7 +59,7 @@ flags.DEFINE_string("majority_attribute_label", "male",
                     "The value of the sensitive attribute for the majority group.")
 flags.DEFINE_string("minority_attribute_label", "female",
                     "The value of the sensitive attribute for the minority group.")
-flags.DEFINE_enum("dataset", None, [keys.GERMAN, keys.ADULT],
+flags.DEFINE_enum("dataset", None, [keys.GERMAN, keys.ADULT, keys.COMPAS],
                   "String identifier for the dataset.")
 
 
@@ -60,6 +69,8 @@ def get_train_path(dataset: str):
         train_path = "./datasets/german.data"
     elif dataset == keys.ADULT:
         train_path = "./datasets/adult.data"
+    elif dataset == keys.COMPAS:
+        train_path = "./datasets/compas-scores-two-years.csv"
     else:
         raise ValueError("train path not available for this dataset")
     return train_path
@@ -73,6 +84,9 @@ def get_colnames(dataset: str):
                NUMERIC_COLUMNS_TRAIN_GERMAN
     elif dataset == keys.ADULT:
         return ADULT_COLUMNS, CATEGORICAL_COLUMNS_TRAIN_ADULT, NUMERIC_COLUMNS_TRAIN_ADULT
+    elif dataset == keys.COMPAS:
+        return COMPAS_COLUMNS, CATEGORICAL_COLUMNS_TRAIN_COMPAS, \
+               NUMERIC_COLUMNS_TRAIN_COMPAS
     else:
         raise ValueError("train path not available for this dataset")
 
@@ -96,9 +110,42 @@ def get_df(dataset: str, train_path: str, flags):
         input_y = input_df.pop(ADULT_COLUMNS[-1])
         input_x = add_age_category(input_df)
         input_x.drop(columns=['fnlwgt', ], inplace=True)
-
         # Recode the label from "<=50K" / ">50K" to 0/1
         input_y = (input_y == ">50K").astype('int32')
+    elif dataset == keys.COMPAS:
+        # The preprocessing here mimics preprocessing from 
+        # https://worksheets.codalab.org/rest/bundles
+        # /0x2074cd3a10934e81accd6db433430ce8/contents/blob/utils/data.py
+        input_df = pd.read_csv(train_path)
+        input_df = input_df.dropna(
+            subset=["days_b_screening_arrest"])  # dropping missing vals
+        # These filters are the same as propublica (refer to
+        # https://github.com/propublica/compas-analysis)
+        # If the charge date of a defendants Compas scored crime was not within 30 days
+        # from when the person was arrested, we assume that because of data quality
+        # reasons, that we do not have the right offense.
+        input_df = input_df[(input_df["days_b_screening_arrest"] <= 30) & (
+                input_df["days_b_screening_arrest"] >= -30)]
+        # We coded the recidivist flag -- is_recid -- to be -1 if we could not find a
+        # compas case at all.
+        input_df = input_df[input_df["is_recid"] != -1]
+
+        # In a similar vein, ordinary traffic offenses -- those with a c_charge_degree
+        # of 'O' -- will not result in Jail time are removed (only two of them).
+        input_df = input_df[
+            input_df["c_charge_degree"] != "O"]  # F: felony, M: misconduct
+
+        # We filtered the underlying data from Broward county to include only those
+        # rows representing people who had either recidivated in two years, or had at
+        # least two years outside of a correctional facility.
+        input_df = input_df[input_df["score_text"] != "NA"]
+        # Only consider blacks and whites for this analysis
+        input_df = input_df[
+            (input_df["race"] == "African-American") | (input_df["race"] == "Caucasian")]
+        input_y = input_df.pop('two_year_recid')
+        compas_train_cols = CATEGORICAL_COLUMNS_TRAIN_COMPAS + \
+                            NUMERIC_COLUMNS_TRAIN_COMPAS
+        input_x = input_df[compas_train_cols]
     else:
         raise ValueError
     # Filter the dataframe to keep only majority and minority groups (currently do not
