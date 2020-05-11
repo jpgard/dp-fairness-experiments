@@ -1,5 +1,12 @@
 library(ggplot2)
-results = read.csv("/Users/jpgard/Documents/github/fair-robust/results.csv")
+library(ggthemes)
+library(magrittr)
+library(gridExtra)
+
+german_results = read.csv("/Users/jpgard/Documents/github/fair-robust/results.csv")
+adult_results_sex = read.csv("/Users/jpgard/Documents/github/fair-robust/adult-sex-bs512e1000l1.0-sex-results.csv")
+adult_results_race = read.csv("/Users/jpgard/Documents/github/fair-robust/adult-racebs512e1000l1.0-race-results.csv")
+compas_results_race = read.csv("/Users/jpgard/Documents/github/fair-robust/compas-racebs64e1000l1.0-race-results.csv")
 
 #+++++++++++++++++++++++++
 # Function to calculate the mean and the standard deviation
@@ -22,21 +29,83 @@ data_summary <- function(data, varname, groupnames){
   return(data_sum)
 }
 
-df2 <- data_summary(results, varname="loss", 
-                    groupnames=c("train_subset", "eval_subset"))
-# Convert dose to a factor variable
-df2$dose=as.factor(df2$dose)
-head(df2)
 
-ggplot(data=df2, aes(x=train_subset, y=loss, group=eval_subset, col=eval_subset)) +
-  geom_bar(stat="identity", fill="grey",
+# Plot for german results
+p_german <- german_results %>% 
+  data_summary(varname="loss", 
+               groupnames=c("train_subset", "eval_subset")) %>%
+  ggplot(aes(x=train_subset, y=loss, group=eval_subset, col=eval_subset)) +
+  geom_bar(stat="identity", 
+           fill="grey",
            position=position_dodge(.9),
-           width=0.5) +
+           width=0.5,
+           size=1) +
   geom_errorbar(aes(ymin=loss-sd, ymax=loss+sd), width=.2, size=1,
                 position=position_dodge(.9)
                 ) +
-  ggtitle("German Credit Dataset\n1 s.d. error bars shown (n = 1000)") +
+  ggtitle("German Credit Dataset\nSensitive Attribute: Sex\n1 s.d. error bars shown (n = 1000)") +
   xlab("Training Subset") +
-  scale_color_discrete(name="Test Subset") +
+  scale_color_colorblind(name="Test Subset") +
   guides(color=guide_legend(override.aes=list(fill=NA))) +
   theme_bw()
+p_german
+
+# Plot for adult results (sex)
+p_adult_sex <- adult_results_sex %>%
+  data_summary(varname="loss",
+               groupnames=c("train_subset", "eval_subset")) %>%
+  ggplot(aes(x=train_subset, y=loss, group=eval_subset, col=eval_subset)) +
+  geom_bar(stat="identity", 
+           fill="grey",
+           position=position_dodge(.9),
+           width=0.5,
+           size=1) +
+  geom_errorbar(aes(ymin=loss-sd, ymax=loss+sd), width=.2, size=1,
+                position=position_dodge(.9)
+  ) +
+  ggtitle("Adult Dataset\nSensitive Attribute: Sex\n1 s.d. error bars shown (n = 37,000)") +
+  xlab("Training Subset") +
+  scale_color_colorblind(name="Test Subset") +
+  guides(color=guide_legend(override.aes=list(fill=NA))) +
+  theme_bw()
+p_adult_sex
+
+# Plot for adult results (race)
+p_adult_race <- adult_results_race %>% data_summary(varname="loss", 
+                              groupnames=c("train_subset", "eval_subset")) %>%
+  ggplot(aes(x=train_subset, y=loss, group=eval_subset, col=eval_subset)) +
+  geom_bar(stat="identity", 
+           fill="grey",
+           position=position_dodge(.9),
+           width=0.5,
+           size=1) +
+  geom_errorbar(aes(ymin=loss-sd, ymax=loss+sd), width=.2, size=1,
+                position=position_dodge(.9)
+  ) +
+  ggtitle("Adult Dataset\nSensitive Attribute: Race\n1 s.d. error bars shown (n = 37,000)") +
+  xlab("Training Subset") +
+  scale_color_colorblind(name="Test Subset") +
+  guides(color=guide_legend(override.aes=list(fill=NA))) +
+  theme_bw()
+p_adult_race
+
+# Plot for compas results (race)
+p_compas_race <- compas_results_race %>% data_summary(varname="loss", 
+                                    groupnames=c("train_subset", "eval_subset")) %>%
+  ggplot(aes(x=train_subset, y=loss, group=eval_subset, col=eval_subset)) +
+  geom_bar(stat="identity", 
+           fill="grey",
+           position=position_dodge(.9),
+           width=0.5,
+           size=1) +
+  geom_errorbar(aes(ymin=loss-sd, ymax=loss+sd), width=.2, size=1,
+                position=position_dodge(.9)
+  ) +
+  ggtitle("COMPAS Dataset\nSensitive Attribute: Race\n1 s.d. error bars shown (n = 5,200)\nNote: 'Minority' group is LARGER in COMPAS") +
+  xlab("Training Subset") +
+  scale_color_colorblind(name="Test Subset") +
+  guides(color=guide_legend(override.aes=list(fill=NA))) +
+  theme_bw()
+p_compas_race
+
+grid.arrange(p_german, p_compas_race, p_adult_sex, p_adult_race, ncol=2)
