@@ -19,12 +19,15 @@ python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --minority_attribute_label Black \
     --batch_size 512
 
-python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset compas \
-    --niters 1 \
+python3 train_l2lr.py
+    --learning_rate 0.01 \
+    --epochs 1000 \
+    --dataset compas \
+    --niters 20 \
     --sensitive_attribute race \
     --majority_attribute_label Caucasian \
     --minority_attribute_label African-American \
-    --batch_size 128
+    --batch_size 64
 """
 
 import os
