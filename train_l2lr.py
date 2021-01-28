@@ -3,7 +3,8 @@ Usage:
 python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset german --niters 50 \
     --sensitive_attribute sex \
     --majority_attribute_label male \
-    --minority_attribute_label female
+    --minority_attribute_label female \
+    --results_dir ./results-tmp
 
 python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --niters 10 \
@@ -57,6 +58,7 @@ flags.DEFINE_integer("batch_size", 64, "The batch size to use.")
 flags.DEFINE_integer("n_classes", 2, "The number of classes of the outcome variable.")
 flags.DEFINE_integer("niters", 50, "Number of experimental replicates to run")
 flags.DEFINE_string("logdir", "./tmp", "The basic directory to save the model in.")
+flags.DEFINE_string("results_dir", "./results", "Directory to write CSV of results to.")
 flags.DEFINE_string("sensitive_attribute", "sex", "The sensitive attribute to use.")
 flags.DEFINE_string("majority_attribute_label", "male",
                     "The value of the sensitive attribute for the majority group.")
@@ -320,7 +322,9 @@ def main(argv):
             results.append(result)
 
     csv_fp = "{}-{}-results.csv".format(uid, FLAGS.sensitive_attribute)
-    pd.DataFrame(results).to_csv(csv_fp, index=False)
+    pd.DataFrame(results).to_csv(
+        os.path.join(FLAGS.results_dir, csv_fp),
+        index=False)
 
     return
 
