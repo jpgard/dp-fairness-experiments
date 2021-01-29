@@ -4,7 +4,8 @@ python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset german --nite
     --sensitive_attribute sex \
     --majority_attribute_label male \
     --minority_attribute_label female \
-    --results_dir ./results-tmp
+    --batch_size 64 \
+    --results_dir ./results
 
 python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --niters 10 \
@@ -39,6 +40,10 @@ import pandas as pd
 from absl import app
 from absl import flags
 from sklearn.model_selection import train_test_split
+from tensorflow_privacy.privacy.optimizers.dp_optimizer_keras import \
+    make_keras_optimizer_class
+from tensorflow_privacy.privacy.analysis.rdp_accountant import compute_rdp
+from tensorflow_privacy.privacy.analysis.rdp_accountant import get_privacy_spent
 
 from src.data import add_age_category
 from src.data.german import GERMAN_COLUMNS, CATEGORICAL_COLUMNS_TRAIN_GERMAN, \
@@ -53,6 +58,9 @@ from src.utils.keys import ALL, MIN, MAJ, VALID_SUBSETS
 FLAGS = flags.FLAGS
 flags.DEFINE_float("learning_rate", 0.01, "The learning rate to use during training.")
 flags.DEFINE_float("l2_lambda", 1.0, "The L2 regularization coefficient.")
+flags.DEFINE_float("dp_l2_norm_clip", 1.0, "The L2 norm clipping parameter for DP.")
+flags.DEFINE_float("dp_noise_multiplier", 0.8, "The noise multiplier for DP")
+flags.DEFINE_bool("dp", False, "Indicator for whether to use DP optimizer.")
 flags.DEFINE_integer("epochs", 5000, "The number of training epochs.")
 flags.DEFINE_integer("batch_size", 64, "The batch size to use.")
 flags.DEFINE_integer("n_classes", 2, "The number of classes of the outcome variable.")
@@ -169,12 +177,34 @@ def make_model_uid(dataset: str, sensitive_attr: str, batch_size: int, epochs: i
     #  models to avoid wasting disk space).
     uid = dataset
     uid += "-" + sensitive_attr
-    uid += "bs{batch_size}e{epochs}l{l2lambda}".format(
+    uid += "bs{batch_size}lr{lr}e{epochs}l{l2lambda}dp{dp}clip{clip}z{z}".format(
         batch_size=batch_size,
+        lr=FLAGS.learning_rate,
         epochs=epochs,
-        l2lambda=l2lambda
+        l2lambda=l2lambda,
+        dp=FLAGS.dp,
+        clip=FLAGS.dp_l2_norm_clip,
+        z=FLAGS.dp_noise_multiplier
     )
     return uid
+
+
+def get_epsilon_for_delta(n, target_delta=1e-5):
+    if FLAGS.dp:
+        noise_multiplier = FLAGS.dp_noise_multiplier
+        sampling_probability = FLAGS.batch_size / float(n)
+        steps = FLAGS.epochs * float(n) // FLAGS.batch_size
+        orders = [1 + x / 10. for x in range(1, 100)] + list(range(12, 64))
+        rdp = compute_rdp(q=sampling_probability,
+                          noise_multiplier=FLAGS.dp_noise_multiplier,
+                          steps=steps,
+                          orders=orders)
+        epsilon = get_privacy_spent(orders, rdp, target_delta=target_delta)[0]
+        print("[INFO] epsilon={} for delta={}".format(epsilon, target_delta))
+    else:
+        epsilon = None
+        target_delta = None
+    return epsilon, target_delta
 
 
 def filter_xy_df(df_x, df_y, colname, value):
@@ -206,26 +236,70 @@ def main(argv):
 
         return input_function
 
+    def get_optimizer():
+        dp_ftrl_opt_cls = make_keras_optimizer_class(tf.keras.optimizers.Ftrl)
+        lr = tf.compat.v1.train.exponential_decay(
+            learning_rate=FLAGS.learning_rate,
+            global_step=tf.compat.v1.train.get_global_step(),
+            decay_steps=10000,
+            decay_rate=0.96,
+            staircase=True)
+        if FLAGS.dp:  # Build the differentially privacy optimizer
+            opt = dp_ftrl_opt_cls(
+                learning_rate=lr,
+                l2_regularization_strength=FLAGS.l2_lambda,
+                l2_norm_clip=FLAGS.dp_l2_norm_clip,
+                noise_multipler=FLAGS.dp_noise_multiplier
+            )
+        else:  # Use the standard optimizer
+            opt = tf.keras.optimizers.Ftrl(
+                learning_rate=lr,
+                l2_regularization_strength=FLAGS.l2_lambda,
+            )
+        return opt
+
     def build_l2lr_estimator(uid, subset):
         """Helper function to build an estimator."""
 
         logdir = os.path.join(FLAGS.logdir, uid, subset)
         shutil.rmtree(logdir, ignore_errors=True)
         # Build the estimator.
-        est = tf.estimator.LinearClassifier(
-            feature_columns=feature_columns,
-            n_classes=FLAGS.n_classes,
-            optimizer=lambda: tf.keras.optimizers.Ftrl(
-                learning_rate=tf.compat.v1.train.exponential_decay(
-                    learning_rate=FLAGS.learning_rate,
-                    global_step=tf.compat.v1.train.get_global_step(),
-                    decay_steps=10000,
-                    decay_rate=0.96,
-                    staircase=True),
-                l2_regularization_strength=FLAGS.l2_lambda,
-            ),
-            model_dir=logdir
-        )
+        if FLAGS.dp:
+            dp_ftrl_opt_cls = make_keras_optimizer_class(tf.keras.optimizers.Ftrl)
+            est = tf.estimator.LinearClassifier(
+                feature_columns=feature_columns,
+                n_classes=FLAGS.n_classes,
+                optimizer=lambda: dp_ftrl_opt_cls(
+                    learning_rate=tf.compat.v1.train.exponential_decay(
+                        learning_rate=FLAGS.learning_rate,
+                        global_step=tf.compat.v1.train.get_global_step(),
+                        decay_steps=10000,
+                        decay_rate=0.96,
+                        staircase=True),
+                    l2_regularization_strength=FLAGS.l2_lambda,
+                    l2_norm_clip=FLAGS.dp_l2_norm_clip,
+                    noise_multiplier=FLAGS.dp_noise_multiplier,
+                    # Tensorflow Privacy raises an error due to reshaping when
+                    # num_microbatches != 1.
+                    num_microbatches=1
+                ),
+                model_dir=logdir
+            )
+        else:
+            est = tf.estimator.LinearClassifier(
+                feature_columns=feature_columns,
+                n_classes=FLAGS.n_classes,
+                optimizer=lambda: tf.keras.optimizers.Ftrl(
+                    learning_rate=tf.compat.v1.train.exponential_decay(
+                        learning_rate=FLAGS.learning_rate,
+                        global_step=tf.compat.v1.train.get_global_step(),
+                        decay_steps=10000,
+                        decay_rate=0.96,
+                        staircase=True),
+                    l2_regularization_strength=FLAGS.l2_lambda,
+                ),
+                model_dir=logdir
+            )
         return est
 
     uid = make_model_uid(FLAGS.dataset, FLAGS.sensitive_attribute,
@@ -294,18 +368,24 @@ def main(argv):
 
         # Train the models
         estimators = dict()
+        subset_eps_and_delta = dict()
         for subset in VALID_SUBSETS:
             print("Training model for subset %s" % subset)
             estimator = build_l2lr_estimator(uid, subset)
             x_subset_train, y_subset_train = train_datasets[subset]
+            eps, delta = get_epsilon_for_delta(n=len(x_subset_train))
+            subset_eps_and_delta[subset] = (eps, delta)
             train_input_fn = make_input_fn(x_subset_train, y_subset_train)
             estimator.train(input_fn=train_input_fn)
             x_subset_test, y_subset_test = test_datasets[subset]
             eval_input_fn = make_input_fn(x_subset_test, y_subset_test)
             result = estimator.evaluate(input_fn=eval_input_fn)
+
             result["train_subset"] = subset  # the data the model was trained on
             result["eval_subset"] = subset  # the data the model was evaluated on
             result["iteration"] = iternum
+            result["eps"] = eps
+            result["delta"] = delta
             print("Eval results for model trained/evaluated on subset {}:")
             print(result)
             estimators[subset] = estimator
@@ -319,6 +399,9 @@ def main(argv):
             result["train_subset"] = ALL  # the data the model was trained on
             result["eval_subset"] = subset  # the data the model was evaluated on
             result["iteration"] = iternum
+            eps, delta = subset_eps_and_delta[subset]
+            result["eps"] = eps
+            result["delta"] = delta
             results.append(result)
 
     csv_fp = "{}-{}-results.csv".format(uid, FLAGS.sensitive_attribute)
