@@ -12,16 +12,16 @@ python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --sensitive_attribute sex \
     --majority_attribute_label Male \
     --minority_attribute_label Female \
-    --batch_size 512
+    --batch_size 512 --dp
 
 python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --niters 10 \
     --sensitive_attribute race \
     --majority_attribute_label White \
     --minority_attribute_label Black \
-    --batch_size 512
+    --batch_size 512 --dp
 
-python3 train_l2lr.py
+python3 train_l2lr.py \
     --learning_rate 0.01 \
     --epochs 1000 \
     --dataset compas \
@@ -29,7 +29,7 @@ python3 train_l2lr.py
     --sensitive_attribute race \
     --majority_attribute_label Caucasian \
     --minority_attribute_label African-American \
-    --batch_size 64
+    --batch_size 64 --dp
 """
 
 import os
