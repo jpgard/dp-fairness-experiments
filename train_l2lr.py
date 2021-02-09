@@ -5,21 +5,23 @@ python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset german --nite
     --majority_attribute_label male \
     --minority_attribute_label female \
     --batch_size 64 \
-    --results_dir ./results
+    --dp --dp_l2_norm_clip 10.0 --dp_noise_multiplier 0.4
 
 python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --niters 10 \
     --sensitive_attribute sex \
     --majority_attribute_label Male \
     --minority_attribute_label Female \
-    --batch_size 512 --dp
+    --batch_size 512 \
+    --dp --dp_l2_norm_clip 10.0 --dp_noise_multiplier 0.4
 
 python3 train_l2lr.py --learning_rate 0.01 --epochs 1000 --dataset adult \
     --niters 10 \
     --sensitive_attribute race \
     --majority_attribute_label White \
     --minority_attribute_label Black \
-    --batch_size 512 --dp
+    --batch_size 512 \
+    --dp --dp_l2_norm_clip 10.0 --dp_noise_multiplier 0.4
 
 python3 train_l2lr.py \
     --learning_rate 0.01 \
@@ -29,7 +31,8 @@ python3 train_l2lr.py \
     --sensitive_attribute race \
     --majority_attribute_label Caucasian \
     --minority_attribute_label African-American \
-    --batch_size 64 --dp
+    --batch_size 64 \
+    --dp --dp_l2_norm_clip 10.0 --dp_noise_multiplier 0.4
 """
 
 import os
