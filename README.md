@@ -27,6 +27,8 @@ The following datasets are required for the experiments in this repo:
 * COMPAS ([link](https://github.com/propublica/compas-analysis))
 * Adult Income ([link](https://archive.ics.uci.edu/ml/datasets/adult))
 
+Each dataset should be downloaded and placed in the `./datasets/` directory.
+
 We note that our preprocessing of the COMPAS dataset follows the open-source code of [1], which was accessed on [codalab](https://worksheets.codalab.org/bundles/0x2074cd3a10934e81accd6db433430ce8).
 
 [1] Khani, F., Raghunathan, A., and Liang, P. Maximum weighted loss discrepancy. arXiv preprintarXiv:1906.03518, 2019.
