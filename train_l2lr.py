@@ -175,9 +175,6 @@ def get_df(dataset: str, train_path: str, flags):
 
 def make_model_uid(dataset: str, sensitive_attr: str, batch_size: int, epochs: int,
                    l2lambda: float):
-    # TODO: add model parameters such as batch size, lr, epochs, etc here once
-    #  experimentation gets more serious (currently we allow this to overwrite the
-    #  models to avoid wasting disk space).
     uid = dataset
     uid += "-" + sensitive_attr
     uid += "bs{batch_size}lr{lr}e{epochs}l{l2lambda}dp{dp}clip{clip}z{z}".format(
