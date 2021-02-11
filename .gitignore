@@ -4,4 +4,4 @@ datasets
 tmp
 venv
 .idea
-
+*.Rhistory
